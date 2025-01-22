@@ -1,0 +1,16 @@
+package main
+
+var instruments = map[uint32]string{
+	415745:  "IOC",
+	589569:  "HAL",
+	633601:  "ONGC",
+	1522689: "SOUTHBANK",
+	2493697: "PARADEEP",
+	3834113: "POWERGRID",
+	3885569: "TARIL-BE",
+	4834049: "SJVN",
+	5331201: "HUDCO",
+	6323201: "SSEGL-ST",
+	6564609: "KRN",
+	7350785: "TRANSRAILL",
+}
