@@ -13,4 +13,5 @@ var instruments = map[uint32]string{
 	6323201: "SSEGL-ST",
 	6564609: "KRN",
 	7350785: "TRANSRAILL",
+	4676609: "AEROFLEX",
 }

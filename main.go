@@ -45,8 +45,9 @@ func onConnect() {
 
 // Triggered when tick is recevived
 func onTick(tick kitemodels.Tick) {
-	fmt.Println("Tick: ", instruments[tick.InstrumentToken], tick.OHLC.Open, tick.LastPrice, tick.TotalBuyQuantity, tick.TotalSellQuantity)
-	go writeToFile(tick)
+	// fmt.Println("Tick: ", instruments[tick.InstrumentToken], tick.OHLC.Open, tick.LastPrice, tick.TotalBuyQuantity, tick.TotalSellQuantity)
+	// go writeToFile(tick)
+	go writeGTVolumesToDashboard(tick)
 }
 
 // Triggered when reconnection is attempted which is enabled by default
@@ -68,9 +69,13 @@ func main() {
 	apiKey := "my_api_key"
 	accessToken := "my_access_token"
 
-	for k, _ := range instruments {
+	for k := range instruments {
 		instToken = append(instToken, k)
+		getHistory(k)
 	}
+
+	fmt.Println(top10Volumes)
+	fmt.Println(top10VolumesDates)
 
 	// Create new Kite ticker instance
 	ticker = kiteticker.New(apiKey, accessToken)

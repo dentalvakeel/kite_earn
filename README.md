@@ -1,0 +1,1 @@
+1. How to identify a bigger jump in the volume? what is big volume jump? its a number. that number varies from stock to stock. 
