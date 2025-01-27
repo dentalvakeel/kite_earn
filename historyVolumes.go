@@ -81,13 +81,18 @@ func getHistory(instrument uint32) {
 	}
 
 	var dates []string
-	for _, k := range volumes[:10] {
+	for _, k := range volumes[:20] {
 		v, ok := volumeDatemap[k]
 		if ok {
-			dates = append(dates, v)
+			t, err := time.Parse("2006-01-02T15:04:05-0700", v)
+			if err != nil {
+				panic(err)
+			}
+			// fmt.Println(t.Format("2006-01-02"), v)
+			dates = append(dates, t.Format("2006-01-02"))
 		}
 	}
-	top10Volumes[instruments[instrument]] = volumes[:10]
+	top10Volumes[instruments[instrument]] = volumes[:20]
 	top10VolumesDates[instruments[instrument]] = dates
 	// fmt.Println(volumes[:20])
 }

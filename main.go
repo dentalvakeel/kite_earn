@@ -46,7 +46,7 @@ func onConnect() {
 // Triggered when tick is recevived
 func onTick(tick kitemodels.Tick) {
 	// fmt.Println("Tick: ", instruments[tick.InstrumentToken], tick.OHLC.Open, tick.LastPrice, tick.TotalBuyQuantity, tick.TotalSellQuantity)
-	// go writeToFile(tick)
+	go writeToFile(tick)
 	go writeGTVolumesToDashboard(tick)
 }
 
@@ -74,8 +74,12 @@ func main() {
 		getHistory(k)
 	}
 
-	fmt.Println(top10Volumes)
-	fmt.Println(top10VolumesDates)
+	// fmt.Println(top10Volumes)
+	for k := range top10Volumes {
+		fmt.Println(k, top10Volumes[k])
+		fmt.Println(k, top10VolumesDates[k])
+		fmt.Println("************************")
+	}
 
 	// Create new Kite ticker instance
 	ticker = kiteticker.New(apiKey, accessToken)
