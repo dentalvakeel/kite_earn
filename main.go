@@ -43,11 +43,18 @@ func onConnect() {
 
 }
 
+var fiveMinTicker = time.NewTicker(20 * time.Second)
+
 // Triggered when tick is recevived
 func onTick(tick kitemodels.Tick) {
-	// fmt.Println("Tick: ", instruments[tick.InstrumentToken], tick.OHLC.Open, tick.LastPrice, tick.TotalBuyQuantity, tick.TotalSellQuantity)
-	go writeToFile(tick)
-	go writeGTVolumesToDashboard(tick)
+	go func() {
+		select {
+		case <-fiveMinTicker.C:
+			// fmt.Println("Tick: ", instruments[tick.InstrumentToken], tick.OHLC.Open, tick.LastPrice, tick.TotalBuyQuantity, tick.TotalSellQuantity)
+			go writeToFile(tick)
+			go writeGTVolumesToDashboard(tick)
+		}
+	}()
 }
 
 // Triggered when reconnection is attempted which is enabled by default
