@@ -28,4 +28,9 @@ var instruments = map[uint32]string{
 	3575297: "HBLENGINE",
 	194561:  "CGPOWER",
 	98049:   "BEL",
+	6637313: "DANISHPOWER",
+	5186817: "IREDA",
+	3660545: "PFC",
+	2730497: "PNB",
+	341505:  "MARINE-ELE",
 }

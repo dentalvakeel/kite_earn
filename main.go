@@ -6,11 +6,13 @@ import (
 
 	kiteconnect "github.com/zerodha/gokiteconnect/v4"
 	kitemodels "github.com/zerodha/gokiteconnect/v4/models"
-	kiteticker "github.com/zerodha/gokiteconnect/v4/ticker"
+
+	//kiteticker "github.com/zerodha/gokiteconnect/v4/ticker"
+	"github.com/joho/godotenv"
 )
 
 var (
-	ticker *kiteticker.Ticker
+	ticker *Ticker
 )
 
 var (
@@ -27,6 +29,14 @@ func onClose(code int, reason string) {
 	fmt.Println("Close: ", code, reason)
 }
 
+func init() {
+	// Load environment variables from .env file
+	err := godotenv.Load()
+	if err != nil {
+		fmt.Println("Error loading .env file")
+	}
+}
+
 // Triggered when connection is established and ready to send and accept data
 func onConnect() {
 	fmt.Println("Connected")
@@ -36,7 +46,7 @@ func onConnect() {
 	}
 	// Set subscription mode for the subscribed token
 	// Default mode is Quote
-	err = ticker.SetMode(kiteticker.ModeFull, instToken)
+	err = ticker.SetMode(ModeFull, instToken)
 	if err != nil {
 		fmt.Println("err: ", err)
 	}
@@ -75,7 +85,6 @@ func onOrderUpdate(order kiteconnect.Order) {
 func main() {
 	apiKey := "my_api_key"
 	accessToken := "my_access_token"
-
 	for k := range instruments {
 		instToken = append(instToken, k)
 		getHistory(k)
@@ -89,7 +98,7 @@ func main() {
 	}
 
 	// Create new Kite ticker instance
-	ticker = kiteticker.New(apiKey, accessToken)
+	ticker = New(apiKey, accessToken)
 
 	// Assign callbacks
 	ticker.OnError(onError)
