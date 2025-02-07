@@ -8,11 +8,14 @@ import (
 	kitemodels "github.com/zerodha/gokiteconnect/v4/models"
 
 	//kiteticker "github.com/zerodha/gokiteconnect/v4/ticker"
+	"sync"
+
 	"github.com/joho/godotenv"
 )
 
 var (
-	ticker *Ticker
+	ticker     *Ticker
+	tickerchan = make(chan kitemodels.Tick)
 )
 
 var (
@@ -50,21 +53,49 @@ func onConnect() {
 	if err != nil {
 		fmt.Println("err: ", err)
 	}
-
 }
 
-var fiveMinTicker = time.NewTicker(20 * time.Second)
+var fiveMinTicker = time.NewTicker(60 * time.Second)
+var writtenInst = map[uint32]bool{}
+var mu sync.Mutex
+
+func updateWrittenInst(key uint32, value bool) {
+	mu.Lock()         // Lock the mutex before accessing writtenInst
+	defer mu.Unlock() // Ensure the mutex is unlocked after the function returns
+
+	// Update the shared resource
+	writtenInst[key] = value
+}
+
+func readWrittenInst(key uint32) bool {
+	mu.Lock()         // Lock the mutex before accessing writtenInst
+	defer mu.Unlock() // Ensure the mutex is unlocked after the function returns
+
+	// Read from the shared resource
+	value := writtenInst[key]
+	return value
+}
 
 // Triggered when tick is recevived
 func onTick(tick kitemodels.Tick) {
-	go func() {
-		select {
-		case <-fiveMinTicker.C:
-			// fmt.Println("Tick: ", instruments[tick.InstrumentToken], tick.OHLC.Open, tick.LastPrice, tick.TotalBuyQuantity, tick.TotalSellQuantity)
-			go writeToFile(tick)
-			go writeGTVolumesToDashboard(tick)
+	// fmt.Println("Tick: ", instruments[tick.InstrumentToken], tick.OHLC.Open, tick.LastPrice, tick.TotalBuyQuantity, tick.TotalSellQuantity)
+	tickerchan <- tick
+}
+
+func initiateTickerChannellistener() {
+	for tick := range tickerchan {
+		writeToFile(tick)
+		writeGTVolumesToDashboard(tick)
+	}
+
+	select {
+
+	case <-fiveMinTicker.C:
+		// fmt.Println("Tick: ", instruments[tick.InstrumentToken], tick.OHLC.Open, tick.LastPrice, tick.TotalBuyQuantity, tick.TotalSellQuantity)
+		for key := range writtenInst {
+			updateWrittenInst(key, false)
 		}
-	}()
+	}
 }
 
 // Triggered when reconnection is attempted which is enabled by default
@@ -88,6 +119,7 @@ func main() {
 	for k := range instruments {
 		instToken = append(instToken, k)
 		getHistory(k)
+		// fetchDeliveryToTradedQuantity(instruments[k])
 	}
 
 	// fmt.Println(top10Volumes)
@@ -108,7 +140,14 @@ func main() {
 	ticker.OnNoReconnect(onNoReconnect)
 	ticker.OnTick(onTick)
 	ticker.OnOrderUpdate(onOrderUpdate)
+	// Check if current time is between 9 AM and 3:30 PM
+	currentTime := time.Now()
+	startTime := time.Date(currentTime.Year(), currentTime.Month(), currentTime.Day(), 9, 0, 0, 0, currentTime.Location())
+	endTime := time.Date(currentTime.Year(), currentTime.Month(), currentTime.Day(), 15, 30, 0, 0, currentTime.Location())
 
-	// Start the connection
-	ticker.Serve()
+	if currentTime.After(startTime) && currentTime.Before(endTime) {
+		// Start the connection
+		go initiateTickerChannellistener()
+		ticker.Serve()
+	}
 }
