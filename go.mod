@@ -8,4 +8,5 @@ require (
 	github.com/gorilla/websocket v1.4.2 // indirect
 	github.com/joho/godotenv v1.5.1 // indirect
 	github.com/zerodha/gokiteconnect/v4 v4.3.5 // indirect
+	gonum.org/v1/gonum v0.15.1
 )

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	kiteconnect "github.com/zerodha/gokiteconnect/v4"
@@ -110,25 +111,40 @@ func onNoReconnect(attempt int) {
 
 // Triggered when order update is received
 func onOrderUpdate(order kiteconnect.Order) {
-	fmt.Printf("Order: ", order.OrderID)
+	fmt.Println("Order: ", order.OrderID)
 }
 
-func main() {
-	apiKey := "my_api_key"
-	accessToken := "my_access_token"
+func kiteCandleCalls() {
 	for k := range instruments {
 		instToken = append(instToken, k)
+		time.Sleep(1 * time.Second)
 		getHistory(k)
 		// fetchDeliveryToTradedQuantity(instruments[k])
 	}
-
-	// fmt.Println(top10Volumes)
 	for k := range top10Volumes {
 		fmt.Println(k, top10Volumes[k])
 		fmt.Println(k, top10VolumesDates[k])
 		fmt.Println("************************")
 	}
+	fmt.Println(incrementForLastThreeDays)
+	fmt.Println(incrementForLastThreeWeeks)
+}
 
+func main() {
+
+	testMode := os.Getenv("TEST_MODE")
+
+	// Restrict to one stock in test mode
+	if testMode == "true" {
+		instruments = map[uint32]string{
+			3764993: "TIMETECHNO",
+		}
+	}
+	apiKey := "my_api_key"
+	accessToken := "my_access_token"
+	go kiteCandleCalls()
+	getNSECookie()
+	initDeliveryTrend()
 	// Create new Kite ticker instance
 	ticker = New(apiKey, accessToken)
 
@@ -150,4 +166,5 @@ func main() {
 		go initiateTickerChannellistener()
 		ticker.Serve()
 	}
+	<-tickerchan
 }

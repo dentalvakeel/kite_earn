@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"time"
 )
 
 type Response struct {
@@ -63,6 +64,19 @@ type SecurityWiseDP struct {
 	SecWiseDelPosDate        string  `json:"secWiseDelPosDate"`
 }
 
+var DeliveryQuantityTrend = make(map[string][]float64)
+
+type Trend string
+
+const (
+	UpTrend   Trend = "↑"
+	DownTrend Trend = "↓"
+	FlatTrend Trend = "↔"
+)
+
+var DeliveryTrend = make(map[string]Trend)
+var DeliveryValue = make(map[string]float64)
+
 // Function to make an HTTP call to the NSE historical data API
 func fetchDeliveryToTradedQuantity(symbol string) float64 {
 	url := fmt.Sprintf("https://www.nseindia.com/api/quote-equity?symbol=%s&section=trade_info", symbol)
@@ -89,6 +103,7 @@ func fetchDeliveryToTradedQuantity(symbol string) float64 {
 	res, err := client.Do(req)
 	if err != nil {
 		fmt.Println(err)
+		getNSECookie()
 		return 0
 	}
 	defer res.Body.Close()
@@ -120,7 +135,46 @@ func fetchDeliveryToTradedQuantity(symbol string) float64 {
 	return response.SecurityWiseDP.DeliveryToTradedQuantity
 }
 
-// func main() {
-// 	// Example usage of the fetchHistoricalData function
-// 	fetchHistoricalData("POWERGRID", []string{"EQ"}, "05-01-2025", "05-02-2025")
-// }
+var every5MinChannel = time.Tick(5 * time.Minute)
+
+func initDeliveryTrend() {
+	go func() {
+		for range every5MinChannel {
+			for _, k := range instruments {
+				time.Sleep(time.Second * 4)
+				val := fetchDeliveryToTradedQuantity(k)
+				DeliveryValue[k] = val
+				DeliveryQuantityTrend[k] = append(DeliveryQuantityTrend[k], val)
+				if len(DeliveryQuantityTrend[k]) > 20 {
+					DeliveryQuantityTrend[k] = DeliveryQuantityTrend[k][:20]
+				}
+				DeliveryTrend[k] = determineTrend(DeliveryQuantityTrend[k])
+			}
+		}
+	}()
+}
+
+func determineTrend(values []float64) Trend {
+	if len(values) < 2 {
+		return FlatTrend // Not enough data to determine trend
+	}
+
+	upCount := 0
+	downCount := 0
+
+	for i := 1; i < len(values); i++ {
+		if values[i] > values[i-1] {
+			upCount++
+		} else if values[i] < values[i-1] {
+			downCount++
+		}
+	}
+
+	if upCount > downCount {
+		return UpTrend
+	} else if downCount > upCount {
+		return DownTrend
+	} else {
+		return FlatTrend
+	}
+}

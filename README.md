@@ -4,3 +4,5 @@
 
 3. Along with high volume need to check delivery percentage.
 4. Risk management: how to do?
+
+5. how to find accumilation of stock. Volume $gt avg 1 month volume and delivery% $gt than 40% for about a week
