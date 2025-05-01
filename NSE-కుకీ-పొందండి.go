@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"time"
 )
 
 func getNSECookie() {
@@ -49,13 +48,4 @@ func getNSECookie() {
 	}
 	os.Setenv("Cookie", allCookies)
 	// fmt.Println(allCookies)
-}
-
-func initiateCookie() {
-	ticker := time.NewTicker(20 * time.Minute)
-	defer ticker.Stop()
-	go getNSECookie()
-	for range ticker.C {
-		go getNSECookie()
-	}
 }

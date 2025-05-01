@@ -119,6 +119,8 @@ func kiteCandleCalls() {
 		instToken = append(instToken, k)
 		time.Sleep(1 * time.Second)
 		getHistory(k)
+		getWeeklyHistory(k)
+		findAccumulation1Week(k)
 		// fetchDeliveryToTradedQuantity(instruments[k])
 	}
 	for k := range top10Volumes {
@@ -137,12 +139,12 @@ func main() {
 	// Restrict to one stock in test mode
 	if testMode == "true" {
 		instruments = map[uint32]string{
-			3764993: "TIMETECHNO",
+			1522689: "SOUTHBANK",
 		}
 	}
 	apiKey := "my_api_key"
 	accessToken := "my_access_token"
-	go kiteCandleCalls()
+	kiteCandleCalls()
 	getNSECookie()
 	initDeliveryTrend()
 	// Create new Kite ticker instance
