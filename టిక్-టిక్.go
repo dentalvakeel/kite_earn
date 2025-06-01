@@ -450,7 +450,7 @@ func (t *Ticker) readMessage(ctx context.Context, wg *sync.WaitGroup) {
 		default:
 			mType, msg, err := t.Conn.ReadMessage()
 			if err != nil {
-				t.triggerError(fmt.Errorf("Error reading data: %v", err))
+				t.triggerError(fmt.Errorf("Error reading data:", err))
 				return
 			}
 

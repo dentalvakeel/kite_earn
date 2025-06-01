@@ -36,15 +36,15 @@ type Order struct {
 }
 
 type TradeInfo struct {
-	TotalTradedVolume  float64 `json:"totalTradedVolume"`
-	TotalTradedValue   float64 `json:"totalTradedValue"`
-	TotalMarketCap     float64 `json:"totalMarketCap"`
-	Ffmc               float64 `json:"ffmc"`
-	ImpactCost         float64 `json:"impactCost"`
-	CMDailyVolatility  string  `json:"cmDailyVolatility"`
-	CMAnnualVolatility string  `json:"cmAnnualVolatility"`
-	MarketLot          string  `json:"marketLot"`
-	ActiveSeries       string  `json:"activeSeries"`
+	TotalTradedVolume  json.Number `json:"totalTradedVolume"`
+	TotalTradedValue   float64     `json:"totalTradedValue"`
+	TotalMarketCap     float64     `json:"totalMarketCap"`
+	Ffmc               float64     `json:"ffmc"`
+	ImpactCost         float64     `json:"impactCost"`
+	CMDailyVolatility  string      `json:"cmDailyVolatility"`
+	CMAnnualVolatility string      `json:"cmAnnualVolatility"`
+	MarketLot          string      `json:"marketLot"`
+	ActiveSeries       string      `json:"activeSeries"`
 }
 
 type ValueAtRisk struct {
@@ -86,7 +86,7 @@ var cache = make(map[string]struct {
 func fetchDeliveryToTradedQuantity(symbol string) float64 {
 	// Check if the symbol is in the cache and if the cache is still valid
 	if cached, found := cache[symbol]; found {
-		if time.Since(cached.timestamp) < 5*time.Minute {
+		if time.Since(cached.timestamp) < 10*time.Minute {
 			return cached.value
 		}
 		// Clear the cache if it's older than 5 minutes

@@ -18,19 +18,29 @@ import (
 var accumilation1Week = make(map[uint32]float32)
 
 func findAccumulation1Week(instrument uint32) {
-	path := fmt.Sprintf("https://kite.zerodha.com/oms/instruments/historical/%d/day", instrument)
-	baseURL, err := url.Parse(path) // Replace with your base URL
+	// Generate a unique file name with a timestamp
+	timestamp := time.Now().Format("02-01-2006")
+	fileName := fmt.Sprintf("accumilations_%s.txt", timestamp)
+
+	// Open the file for writing
+	file, err := os.OpenFile(fileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		fmt.Println("Error parsing URL:", err)
+		fmt.Println("Error opening file:", err)
+		return
+	}
+	defer file.Close()
+
+	path := fmt.Sprintf("https://kite.zerodha.com/oms/instruments/historical/%d/day", instrument)
+	baseURL, err := url.Parse(path)
+	if err != nil {
+		fmt.Fprintf(file, "Error parsing URL: %v\n", err)
 		return
 	}
 	params := url.Values{}
 	params.Add("user_id", "YA0828")
 	params.Add("oi", "1")
-	// lastOneYear := time.Now().AddDate(-1, 0, 0).Format("2006-01-02")
 	lastoneweek := time.Now().AddDate(0, 0, -30).Format("2006-01-02")
 	yesterday := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
-	// if time is after 3:30 pm set yesterday to today
 	hour := time.Now().Hour()
 	minute := time.Now().Minute()
 	if hour == 15 && minute > 30 {
@@ -43,31 +53,29 @@ func findAccumulation1Week(instrument uint32) {
 	params.Add("to", yesterday)
 	baseURL.RawQuery = params.Encode()
 
-	// Create the HTTP request
 	req, err := http.NewRequest("GET", baseURL.String(), nil)
 	if err != nil {
-		fmt.Println("Error creating request:", err)
+		fmt.Fprintf(file, "Error creating request: %v\n", err)
 		return
 	}
 
-	// Add headers
 	token := fmt.Sprintf("enctoken %s", os.Getenv("enctoken"))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", token) // Replace with your authorization token, if needed
+	req.Header.Set("Authorization", token)
 
-	// Create an HTTP client and send the request
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		fmt.Println("Error sending request:", err)
+		fmt.Fprintf(file, "Error sending request: %v\n", err)
 		return
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body) // response body is []byte
-	// fmt.Println("Response Status:", string(body))
+	body, _ := io.ReadAll(resp.Body)
 	var hist History
-	if err := json.Unmarshal(body, &hist); err != nil { // Parse []byte to go struct pointer
-		fmt.Println("Can not unmarshal JSON")
+	if err := json.Unmarshal(body, &hist); err != nil {
+		fmt.Fprintf(file, "Cannot unmarshal JSON: %v\n", err)
+		fmt.Fprintln(file, "----------------------------------------")
+		return
 	}
 
 	var sellVolume, buyVolume uint32
@@ -85,35 +93,31 @@ func findAccumulation1Week(instrument uint32) {
 		accumilationTrend = append(accumilationTrend, float32(buyVolume)/float32(sellVolume))
 	}
 
-	fmt.Printf("Trend: %f, Buy Volume: %d, Sell Volume: %d\n", accumilationTrend, buyVolume, sellVolume)
+	fmt.Fprintf(file, "Instrument:%s, Trend: %v, Buy Volume: %d, Sell Volume: %d\n", instruments[instrument], accumilationTrend, buyVolume, sellVolume)
 
 	// fmt.Printf("Instrument: %s, Sell Volume: %d, Buy Volume: %d\n", instruments[instrument], sellVolume, buyVolume)
 	// Check if the last three values of accumilationTrend are increasing
 	if len(accumilationTrend) >= 3 {
 		n := len(accumilationTrend)
 		if accumilationTrend[n-3] < accumilationTrend[n-2] && accumilationTrend[n-2] < accumilationTrend[n-1] {
-			fmt.Printf("\033[32m Instrument: %s, Increasing Trend: %v\n \033[0m", instruments[instrument], accumilationTrend[n-3:])
+			fmt.Fprintf(file, "Instrument: %s, Increasing Trend: %v\n", instruments[instrument], accumilationTrend[n-3:])
 		}
 	}
 	if buyVolume == 0 {
+		// print in red color
+		fmt.Fprintf(file, "No buy volume for %s %v\n", instruments[instrument], accumilationTrend)
 		fmt.Println("No buy volume")
 		return
 	}
 	if buyVolume > sellVolume {
 		accumilationpercent := float32(buyVolume) / float32(sellVolume)
 		if accumilationpercent > 1.5 {
-			fmt.Printf("Accumulation for %s %f \n", instruments[instrument], accumilationpercent)
-		}
-		if accumilationpercent < 1 {
-			fmt.Printf("May be selling for %s %f \n", instruments[instrument], accumilationpercent)
+			fmt.Fprintf(file, "Accumulation for %s %f\n", instruments[instrument], accumilationpercent)
+		} else {
+			fmt.Fprintf(file, "May be selling for %s %f\n", instruments[instrument], accumilationpercent)
 		}
 		accumilation1Week[instrument] = accumilationpercent
 	}
 
-	// if sellVolume > buyVolume {
-	// 	fmt.Printf("No accumulation for %s %f \n", instruments[instrument], float32(buyVolume-sellVolume)/float32(buyVolume)*100)
-	// } else {
-	// 	fmt.Printf("Accumulation for %s %f \n", instruments[instrument], float32(buyVolume-sellVolume)/float32(buyVolume)*100)
-	// }
-	fmt.Println("----------------------------------------")
+	fmt.Fprintln(file, "----------------------------------------")
 }

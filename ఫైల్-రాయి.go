@@ -32,16 +32,25 @@ func writeToFile(tick kitemodels.Tick) {
 	findDepthUptrend(tick)
 	fileName := instruments[tick.InstrumentToken]
 	f, err := os.OpenFile("ticks/"+fileName, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	dashboardfile, err := os.OpenFile("Dashboard", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		panic(err)
+	}
+	fileName = fmt.Sprintf("Dashboard_%s", time.Now().Format("02-01-2006"))
+	dashboardfile, err := os.OpenFile(fileName, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		panic(err)
+	}
 	if err != nil {
 		panic(err)
 	}
 	defer f.Close()
 	defer dashboardfile.Close()
-	if len(top10Volumes[instruments[tick.InstrumentToken]]) < 0 {
+	if len(top10Volumes[instruments[tick.InstrumentToken]]) == 0 {
 		return
 	}
-	if tick.LastPrice > tick.OHLC.Close && findDepthFavourable(tick) && fetchDeliveryToTradedQuantity(instruments[tick.InstrumentToken]) > 30 {
+	deliverPercent := fetchDeliveryToTradedQuantity(instruments[tick.InstrumentToken])
+	dashboardPass := deliverPercent > 30 || deliverPercent == 0
+	if tick.LastPrice > tick.OHLC.Close && findDepthFavourable(tick) && dashboardPass {
 		// fetchHistoricalData(instruments[tick.InstrumentToken])
 		w := tabwriter.NewWriter(dashboardfile, 0, 0, 1, ' ', tabwriter.Debug)
 		// fmt.Fprintln(w, "Instrument\tOpen\tLast Price\tTotal Buy Quantity\tTotal Sell Quantity\tVolume Traded\tDelivery Trend\tIncrement For Last Three Weeks\tIncrement for Last three days\tBuyQtyTrend\tSellQtyTrend")

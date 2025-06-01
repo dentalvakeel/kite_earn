@@ -139,13 +139,14 @@ func main() {
 	// Restrict to one stock in test mode
 	if testMode == "true" {
 		instruments = map[uint32]string{
-			1522689: "SOUTHBANK",
+			7398145: "KITEX",
 		}
 	}
 	apiKey := "my_api_key"
 	accessToken := "my_access_token"
 	kiteCandleCalls()
 	getNSECookie()
+	fetchBulkDeals()
 	initDeliveryTrend()
 	// Create new Kite ticker instance
 	ticker = New(apiKey, accessToken)
