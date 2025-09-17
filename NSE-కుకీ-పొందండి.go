@@ -18,7 +18,7 @@ func getNSECookie() {
 	req.Header.Add("Accept", "*/*")
 	req.Header.Add("Cache-Control", "no-cache")
 
-	req.Header.Add("Postman-Token", "8ee56bdc-1204-46d1-a552-579dc75723c3")
+	// req.Header.Add("Postman-Token", "8ee56bdc-1204-46d1-a552-579dc75723c3")
 	req.Header.Add("Host", "www.nseindia.com")
 	//req.Header.Add("Accept-Encoding", "gzip, deflate, br")
 	req.Header.Add("Connection", "keep-alive")

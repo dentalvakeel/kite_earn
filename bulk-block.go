@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -57,8 +58,8 @@ type BlockDealData struct {
 }
 
 func fetchBulkDeals() {
+	// url := "https://www.nseindia.com/api/snapshot-capital-market-largedeal"
 	url := "https://www.nseindia.com/api/snapshot-capital-market-largedeal"
-
 	// Create an HTTP client
 	client := &http.Client{
 		Timeout: 10 * time.Second,
@@ -103,7 +104,7 @@ func fetchBulkDeals() {
 	}
 	stocks := []string{} // Example stock symbols
 	for _, val := range instruments {
-		stocks = append(stocks, val)
+		stocks = append(stocks, val[0])
 	}
 	// Print the bulk deals
 	for _, deal := range bulkDealsResponse.BulkDealsData {
@@ -112,6 +113,48 @@ func fetchBulkDeals() {
 		if contains(stocks, deal.Symbol) {
 			fmt.Printf("\033[31mDate: %s, Symbol: %s, Name: %s, Client: %s, Buy/Sell: %s, Quantity: %s, WATP: %s, Remarks: %s\033[0m\n",
 				deal.Date, deal.Symbol, deal.Name, deal.ClientName, deal.BuySell, deal.Qty, deal.WATP, deal.Remarks)
+		}
+	}
+
+	findBulkBoughtStock(bulkDealsResponse)
+}
+
+func findBulkBoughtStock(bulkDeals BulkDealsResponse) {
+	quantities := make(map[string]struct {
+		buyQty  int64
+		sellQty int64
+	})
+	for _, deal := range bulkDeals.BulkDealsData {
+		qty, err := strconv.ParseInt(deal.Qty, 10, 64)
+		if err != nil {
+			return
+		}
+
+		if deal.BuySell == "BUY" {
+			quantities[deal.Symbol] = struct {
+				buyQty  int64
+				sellQty int64
+			}{
+				buyQty:  quantities[deal.Symbol].buyQty + qty,
+				sellQty: quantities[deal.Symbol].sellQty,
+			}
+		} else if deal.BuySell == "SELL" {
+			quantities[deal.Symbol] = struct {
+				buyQty  int64
+				sellQty int64
+			}{
+				buyQty:  quantities[deal.Symbol].buyQty,
+				sellQty: quantities[deal.Symbol].sellQty + qty,
+			}
+		}
+	}
+	for symbol, qty := range quantities {
+		if qty.buyQty > 0 && qty.sellQty == 0 {
+			fmt.Printf("\033[32mBulk Bought Stock: %s, Buy Quantity: %d\033[0m\n", symbol, qty.buyQty)
+		} else if qty.sellQty > 0 && qty.buyQty == 0 {
+			fmt.Printf("\033[31mBulk Sold Stock: %s, Sell Quantity: %d\033[0m\n", symbol, qty.sellQty)
+		} else if qty.buyQty > 0 && qty.sellQty > 0 {
+			// fmt.Printf("\033[33mBulk Traded Stock: %s, Buy Quantity: %d, Sell Quantity: %d\033[0m\n", symbol, qty.buyQty, qty.sellQty)
 		}
 	}
 }

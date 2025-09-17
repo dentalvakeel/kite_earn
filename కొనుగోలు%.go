@@ -82,17 +82,28 @@ var cache = make(map[string]struct {
 	timestamp time.Time
 })
 
+var count = make(map[string]int)
+var globalRateLimitHit time.Time
+
 // Function to make an HTTP call to the NSE historical data API
 func fetchDeliveryToTradedQuantity(symbol string) float64 {
+
+	if !globalRateLimitHit.IsZero() && time.Since(globalRateLimitHit) < 5*time.Minute {
+		if cached, found := cache[symbol]; found {
+			fmt.Println("Using cached value due to global rate limit for symbol:", symbol)
+			return cached.value
+		}
+		return 0
+	}
 	// Check if the symbol is in the cache and if the cache is still valid
 	if cached, found := cache[symbol]; found {
-		if time.Since(cached.timestamp) < 10*time.Minute {
+		if time.Since(cached.timestamp) < 25*time.Minute {
 			return cached.value
 		}
 		// Clear the cache if it's older than 5 minutes
 		delete(cache, symbol)
 	}
-
+	count[symbol]++
 	url := fmt.Sprintf("https://www.nseindia.com/api/quote-equity?symbol=%s&section=trade_info", symbol)
 	method := "GET"
 
@@ -107,15 +118,15 @@ func fetchDeliveryToTradedQuantity(symbol string) float64 {
 	req.Header.Add("User-Agent", "PostmanRuntime/7.43.0")
 	req.Header.Add("Accept", "*/*")
 	req.Header.Add("Cache-Control", "no-cache")
-	req.Header.Add("Postman-Token", "8ee56bdc-1204-46d1-a552-579dc75723c3")
+	// req.Header.Add("Postman-Token", "8ee56bdc-1204-46d1-a552-579dc75723c3")
 	req.Header.Add("Host", "www.nseindia.com")
 	req.Header.Add("Connection", "keep-alive")
 
 	res, err := client.Do(req)
 	if err != nil {
 		fmt.Println(err)
-		getNSECookie()
-		return fetchDeliveryToTradedQuantity(symbol)
+		//
+		return 0
 	}
 	defer res.Body.Close()
 
@@ -129,6 +140,20 @@ func fetchDeliveryToTradedQuantity(symbol string) float64 {
 	var response Response
 	err = json.Unmarshal(body, &response)
 	if err != nil {
+		str := string(body)
+		if includes := "Resource not found"; str == includes {
+			fmt.Println("Resource not found for symbol:", symbol)
+			return 0
+		}
+		getNSECookie()
+		if includes := "Access Denied"; str == includes {
+			fmt.Println("Rate limit exceeded. Please try after some time for symbol:", symbol)
+			globalRateLimitHit = time.Now()
+			if cached, found := cache[symbol]; found {
+				return cached.value
+			}
+			return 0
+		}
 		fmt.Println("Error unmarshalling response:", err)
 		return 0
 	}
@@ -153,13 +178,13 @@ func initDeliveryTrend() {
 		for range every5MinChannel {
 			for _, k := range instruments {
 				time.Sleep(time.Second * 30)
-				val := fetchDeliveryToTradedQuantity(k)
-				DeliveryValue[k] = val
-				DeliveryQuantityTrend[k] = append(DeliveryQuantityTrend[k], val)
-				if len(DeliveryQuantityTrend[k]) > 20 {
-					DeliveryQuantityTrend[k] = DeliveryQuantityTrend[k][:20]
+				val := fetchDeliveryToTradedQuantity(k[0])
+				DeliveryValue[k[0]] = val
+				DeliveryQuantityTrend[k[0]] = append(DeliveryQuantityTrend[k[0]], val)
+				if len(DeliveryQuantityTrend[k[0]]) > 20 {
+					DeliveryQuantityTrend[k[0]] = DeliveryQuantityTrend[k[0]][:20]
 				}
-				DeliveryTrend[k] = determineTrend(DeliveryQuantityTrend[k])
+				DeliveryTrend[k[0]] = determineTrend(DeliveryQuantityTrend[k[0]])
 			}
 		}
 	}()

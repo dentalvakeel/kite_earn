@@ -13,7 +13,8 @@ import (
 var (
 	lastWriteTime = make(map[uint32]time.Time) // Tracks last write time for each instrument token
 	writeMutex    sync.Mutex                   // Ensures thread-safe access to lastWriteTime
-	writeInterval = 1 * time.Minute            // Minimum interval between writes for the same script
+	writeInterval = 1 * time.Minute
+	DMAwriteTime  = make(map[uint32]time.Time) // Minimum interval between writes for the same script
 )
 
 func writeToFile(tick kitemodels.Tick) {
@@ -30,7 +31,7 @@ func writeToFile(tick kitemodels.Tick) {
 	defer writeMutex.Unlock()
 
 	findDepthUptrend(tick)
-	fileName := instruments[tick.InstrumentToken]
+	fileName := instruments[tick.InstrumentToken][0]
 	f, err := os.OpenFile("ticks/"+fileName, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		panic(err)
@@ -40,34 +41,34 @@ func writeToFile(tick kitemodels.Tick) {
 	if err != nil {
 		panic(err)
 	}
-	if err != nil {
-		panic(err)
-	}
 	defer f.Close()
 	defer dashboardfile.Close()
-	if len(top10Volumes[instruments[tick.InstrumentToken]]) == 0 {
+	if len(top10Volumes[instruments[tick.InstrumentToken][0]]) == 0 {
 		return
 	}
-	deliverPercent := fetchDeliveryToTradedQuantity(instruments[tick.InstrumentToken])
+	deliverPercent := fetchDeliveryToTradedQuantity(instruments[tick.InstrumentToken][0])
 	dashboardPass := deliverPercent > 30 || deliverPercent == 0
 	if tick.LastPrice > tick.OHLC.Close && findDepthFavourable(tick) && dashboardPass {
 		// fetchHistoricalData(instruments[tick.InstrumentToken])
 		w := tabwriter.NewWriter(dashboardfile, 0, 0, 1, ' ', tabwriter.Debug)
 		// fmt.Fprintln(w, "Instrument\tOpen\tLast Price\tTotal Buy Quantity\tTotal Sell Quantity\tVolume Traded\tDelivery Trend\tIncrement For Last Three Weeks\tIncrement for Last three days\tBuyQtyTrend\tSellQtyTrend")
-		fmt.Fprintf(w, "%s\t%f\t%f\t%d\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t%d\t%f\t\n",
+		fmt.Fprintf(w, "%s\t%f\t%f\t%d\t%d\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t%f\t%f\t%f\t%f\t\n",
 			instruments[tick.InstrumentToken],
 			tick.OHLC.Open,
 			tick.LastPrice,
 			tick.TotalBuyQuantity,
 			tick.TotalSellQuantity,
 			tick.VolumeTraded,
-			DeliveryTrend[instruments[tick.InstrumentToken]],
-			incrementForLastThreeWeeks[instruments[tick.InstrumentToken]],
-			incrementForLastThreeDays[instruments[tick.InstrumentToken]],
+			top10Volumes[instruments[tick.InstrumentToken][0]][len(top10Volumes[instruments[tick.InstrumentToken][0]])-1],
+			DeliveryTrend[instruments[tick.InstrumentToken][0]],
+			incrementForLastThreeWeeks[instruments[tick.InstrumentToken][0]],
+			incrementForLastThreeDays[instruments[tick.InstrumentToken][0]],
 			buyDepthTrend[tick.InstrumentToken],
 			sellDepthTrend[tick.InstrumentToken],
-			top10Volumes[instruments[tick.InstrumentToken]][len(top10Volumes[instruments[tick.InstrumentToken]])-1],
 			accumilation1Week[tick.InstrumentToken],
+			deliverPercent,
+			dmaValues[instruments[tick.InstrumentToken][0]+"_50DMA"],
+			dmaValues[instruments[tick.InstrumentToken][0]+"_200DMA"],
 		)
 		w.Flush()
 		lastWriteTime[tick.InstrumentToken] = time.Now()
@@ -87,34 +88,96 @@ func writeGTVolumesToDashboard(tick kitemodels.Tick) {
 		return
 	}
 	// updateWrittenInst(tick.InstrumentToken, true)
-	lastYearsVolumes := top10Volumes[instruments[tick.InstrumentToken]]
-	for index, v := range lastYearsVolumes {
-		// fmt.Println(tick.VolumeTraded, instruments[tick.InstrumentToken], v)
+	lastYearsVolumes := top10Volumes[instruments[tick.InstrumentToken][0]]
 
-		instrumentdayKey := fmt.Sprintf("%d-%d", tick.InstrumentToken, index)
-		_, ok := DashboardMap[instrumentdayKey]
-		if ok {
-			DashboardMap[instrumentdayKey]++
-			if DashboardMap[instrumentdayKey] > 1000 {
-				delete(DashboardMap, instrumentdayKey)
-			}
-			continue
-		} else {
-			DashboardMap[instrumentdayKey] = 1
-		}
-		if tick.VolumeTraded > v && tick.LastPrice > tick.OHLC.Close {
-			f, err := os.OpenFile("Dashboard", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-			if err != nil {
-				panic(err)
-			}
-			defer f.Close()
-			s := fmt.Sprintf("%s	%f	%f	%d	%d	%d %d %s\n", instruments[tick.InstrumentToken], tick.OHLC.Open, tick.LastPrice, tick.TotalBuyQuantity, tick.TotalSellQuantity, tick.VolumeTraded, index, top10VolumesDates[instruments[tick.InstrumentToken]][index])
-			_, err = f.WriteString(s)
-			if err != nil {
-				panic(err)
-			}
+	isCurrentPricenear50DMA := tick.LastPrice > dmaValues[instruments[tick.InstrumentToken][0]+"_50DMA"]*0.97 && tick.LastPrice < dmaValues[instruments[tick.InstrumentToken][0]+"_50DMA"]*1.03
+	isCurrentPricenear200DMA := tick.LastPrice > dmaValues[instruments[tick.InstrumentToken][0]+"_200DMA"]*0.97 && tick.LastPrice < dmaValues[instruments[tick.InstrumentToken][0]+"_200DMA"]*1.03
+	isInTop40Volumes := false
+	for _, vol := range top40Volumes[instruments[tick.InstrumentToken][0]] {
+		if tick.VolumeTraded > vol {
+			isInTop40Volumes = true
+			break
 		}
 	}
+	deliverPercent := fetchDeliveryToTradedQuantity(instruments[tick.InstrumentToken][0])
+	dashboardPass := deliverPercent > 30 || deliverPercent == 0
+	// if tick.currentPrice in range of top40volume
+	if isInTop40Volumes && (isCurrentPricenear200DMA || isCurrentPricenear50DMA) && dashboardPass {
+		// Write to dashboard
+		f, err := os.OpenFile("Dashboard", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+		if err != nil {
+			panic(err)
+		}
+		defer f.Close()
+		// use DMAticker map to store time when last written to Dashboard file if time is < 3 mins avoid writing
+		// Write to dashboard
+		lastDMAwrite, ok := DMAwriteTime[tick.InstrumentToken]
+		if ok && time.Since(lastDMAwrite) < 3*time.Minute {
+			return
+		}
+		s := fmt.Sprintf("%s %s	%f	%f	%d %d %d %f %f\n",
+			"Range",
+			instruments[tick.InstrumentToken],
+			tick.OHLC.Open,
+			tick.LastPrice,
+			tick.TotalBuyQuantity,
+			tick.TotalSellQuantity,
+			tick.VolumeTraded,
+			dmaValues[instruments[tick.InstrumentToken][0]+"_50DMA"],
+			dmaValues[instruments[tick.InstrumentToken][0]+"_200DMA"])
+		_, err = f.WriteString(s)
+		SendTelegramMessage(s)
+		DMAwriteTime[tick.InstrumentToken] = time.Now()
+		if err != nil {
+			panic(err)
+		}
+		// continue
+	}
+
+	rank := 21
+	// iterate range in reverse order to find the index
+	for _, v := range lastYearsVolumes {
+		if tick.VolumeTraded > v {
+			rank--
+		}
+	}
+
+	// fmt.Println(tick.VolumeTraded, instruments[tick.InstrumentToken], v)
+
+	instrumentdayKey := fmt.Sprintf("%d", tick.InstrumentToken)
+	_, ok := DashboardMap[instrumentdayKey]
+	if ok {
+		DashboardMap[instrumentdayKey]++
+		if DashboardMap[instrumentdayKey] > 1000 {
+			delete(DashboardMap, instrumentdayKey)
+		}
+		return
+	} else {
+		DashboardMap[instrumentdayKey] = 1
+	}
+
+	if rank < 21 && tick.LastPrice > tick.OHLC.Close {
+		f, err := os.OpenFile("Dashboard", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+		if err != nil {
+			panic(err)
+		}
+		defer f.Close()
+		s := fmt.Sprintf("%s	%f	%f	%d	%d	%d %d %s\n",
+			instruments[tick.InstrumentToken],
+			tick.OHLC.Open,
+			tick.LastPrice,
+			tick.TotalBuyQuantity,
+			tick.TotalSellQuantity,
+			tick.VolumeTraded,
+			rank,
+			top10VolumesDates[instruments[tick.InstrumentToken][0]][rank-1])
+		_, err = f.WriteString(s)
+		SendTelegramMessage(s)
+		if err != nil {
+			panic(err)
+		}
+	}
+
 }
 
 func findDepthFavourable(tick kitemodels.Tick) bool {

@@ -450,7 +450,7 @@ func (t *Ticker) readMessage(ctx context.Context, wg *sync.WaitGroup) {
 		default:
 			mType, msg, err := t.Conn.ReadMessage()
 			if err != nil {
-				t.triggerError(fmt.Errorf("Error reading data:", err))
+				t.triggerError(fmt.Errorf("error reading data: %v", err))
 				return
 			}
 
@@ -464,7 +464,7 @@ func (t *Ticker) readMessage(ctx context.Context, wg *sync.WaitGroup) {
 			if mType == websocket.BinaryMessage {
 				ticks, err := t.parseBinary(msg)
 				if err != nil {
-					t.triggerError(fmt.Errorf("Error parsing data received: %v", err))
+					t.triggerError(fmt.Errorf("error parsing data received: %v", err))
 				}
 
 				// Trigger individual tick.

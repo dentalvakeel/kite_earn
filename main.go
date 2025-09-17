@@ -15,7 +15,7 @@ import (
 )
 
 var (
-	ticker     *Ticker
+	// ticker     *Ticker
 	tickerchan = make(chan kitemodels.Tick)
 )
 
@@ -38,21 +38,6 @@ func init() {
 	err := godotenv.Load()
 	if err != nil {
 		fmt.Println("Error loading .env file")
-	}
-}
-
-// Triggered when connection is established and ready to send and accept data
-func onConnect() {
-	fmt.Println("Connected")
-	err := ticker.Subscribe(instToken)
-	if err != nil {
-		fmt.Println("err: ", err)
-	}
-	// Set subscription mode for the subscribed token
-	// Default mode is Quote
-	err = ticker.SetMode(ModeFull, instToken)
-	if err != nil {
-		fmt.Println("err: ", err)
 	}
 }
 
@@ -119,55 +104,105 @@ func kiteCandleCalls() {
 		instToken = append(instToken, k)
 		time.Sleep(1 * time.Second)
 		getHistory(k)
+		// print the dma for testing
+		fmt.Println("50 DMA: ", instruments[k][0], dmaValues[instruments[k][0]+"_50DMA"])
+		fmt.Println("200 DMA: ", instruments[k][0], dmaValues[instruments[k][0]+"_200DMA"])
 		getWeeklyHistory(k)
 		findAccumulation1Week(k)
 		// fetchDeliveryToTradedQuantity(instruments[k])
 	}
-	for k := range top10Volumes {
-		fmt.Println(k, top10Volumes[k])
-		fmt.Println(k, top10VolumesDates[k])
-		fmt.Println("************************")
-	}
-	fmt.Println(incrementForLastThreeDays)
-	fmt.Println(incrementForLastThreeWeeks)
+	// for k := range top10Volumes {
+	// 	fmt.Println(k, top10Volumes[k])
+	// 	fmt.Println(k, top10VolumesDates[k])
+	// 	fmt.Println("************************")
+	// }
+	// fmt.Println(incrementForLastThreeDays)
+	// fmt.Println(incrementForLastThreeWeeks)
 }
 
 func main() {
-
 	testMode := os.Getenv("TEST_MODE")
-
+	SendTelegramMessage("Bot started")
 	// Restrict to one stock in test mode
 	if testMode == "true" {
-		instruments = map[uint32]string{
-			7398145: "KITEX",
+		instruments = map[uint32][]string{
+			4834049: {"SJVN", "S14"},
 		}
 	}
+
 	apiKey := "my_api_key"
 	accessToken := "my_access_token"
-	kiteCandleCalls()
+
+	// Split instrument tokens into two slices
+	var tokens1, tokens2 []uint32
+	i := 0
+	for k := range instruments {
+		if i%2 == 0 {
+			tokens1 = append(tokens1, k)
+		} else {
+			tokens2 = append(tokens2, k)
+		}
+		i++
+	}
+
+	// Create two ticker instances
+	ticker1 := New(apiKey, accessToken)
+	ticker2 := New(apiKey, accessToken)
+
+	// Assign callbacks for ticker1
+	ticker1.OnError(onError)
+	ticker1.OnClose(onClose)
+	ticker1.OnConnect(func() {
+		fmt.Println("Connected ticker1")
+		err := ticker1.Subscribe(tokens1)
+		if err != nil {
+			fmt.Println("err: ", err)
+		}
+		err = ticker1.SetMode(ModeFull, tokens1)
+		if err != nil {
+			fmt.Println("err: ", err)
+		}
+	})
+	ticker1.OnReconnect(onReconnect)
+	ticker1.OnNoReconnect(onNoReconnect)
+	ticker1.OnTick(onTick)
+	ticker1.OnOrderUpdate(onOrderUpdate)
+
+	// Assign callbacks for ticker2
+	ticker2.OnError(onError)
+	ticker2.OnClose(onClose)
+	ticker2.OnConnect(func() {
+		fmt.Println("Connected ticker2")
+		err := ticker2.Subscribe(tokens2)
+		if err != nil {
+			fmt.Println("err: ", err)
+		}
+		err = ticker2.SetMode(ModeFull, tokens2)
+		if err != nil {
+			fmt.Println("err: ", err)
+		}
+	})
+	ticker2.OnReconnect(onReconnect)
+	ticker2.OnNoReconnect(onNoReconnect)
+	ticker2.OnTick(onTick)
+	ticker2.OnOrderUpdate(onOrderUpdate)
+
+	go kiteCandleCalls()
+	go printAllPriceForecasts()
 	getNSECookie()
+	cacheCorporateActions()
 	fetchBulkDeals()
 	initDeliveryTrend()
-	// Create new Kite ticker instance
-	ticker = New(apiKey, accessToken)
 
-	// Assign callbacks
-	ticker.OnError(onError)
-	ticker.OnClose(onClose)
-	ticker.OnConnect(onConnect)
-	ticker.OnReconnect(onReconnect)
-	ticker.OnNoReconnect(onNoReconnect)
-	ticker.OnTick(onTick)
-	ticker.OnOrderUpdate(onOrderUpdate)
-	// Check if current time is between 9 AM and 3:30 PM
 	currentTime := time.Now()
 	startTime := time.Date(currentTime.Year(), currentTime.Month(), currentTime.Day(), 9, 0, 0, 0, currentTime.Location())
 	endTime := time.Date(currentTime.Year(), currentTime.Month(), currentTime.Day(), 15, 30, 0, 0, currentTime.Location())
 
 	if currentTime.After(startTime) && currentTime.Before(endTime) {
-		// Start the connection
 		go initiateTickerChannellistener()
-		ticker.Serve()
+		go ticker1.Serve()
+		go ticker2.Serve()
+		// select {} // block forever
 	}
-	<-tickerchan
+	select {}
 }

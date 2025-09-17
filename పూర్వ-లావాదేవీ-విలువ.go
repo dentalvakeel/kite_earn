@@ -1,9 +1,11 @@
 package main
 
 import (
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -19,9 +21,11 @@ type History struct {
 }
 
 var top10Volumes = map[string][]uint32{}
+var top40Volumes = map[string][]uint32{}
 var top10VolumesDates = map[string][]string{}
 var incrementForLastThreeDays = map[string]string{}
 var incrementForLastThreeWeeks = map[string]string{}
+var dmaValues = map[string]float64{}
 
 func getHistory(instrument uint32) {
 	path := fmt.Sprintf("https://kite.zerodha.com/oms/instruments/historical/%d/day", instrument)
@@ -60,11 +64,34 @@ func getHistory(instrument uint32) {
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body) // response body is []byte
+	// fmt.Println(string(body))        // Print the response body for debugging
 	var hist History
 	if err := json.Unmarshal(body, &hist); err != nil { // Parse []byte to go struct pointer
 		fmt.Println("Can not unmarshal JSON")
 	}
-	increasingThreeDays(instrument, hist)
+	// write the historical data in to a csv file with name of file as stock name
+	file, err := os.Create(fmt.Sprintf("backtest/historical_data_%s.csv", instruments[instrument][0]))
+	if err != nil {
+		fmt.Println("Error creating CSV file:", err)
+		return
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	// Write the header
+	writer.Write([]string{"Date", "Open", "High", "Low", "Close", "Volume"})
+	for _, candle := range hist.Data.Candles {
+		writer.Write([]string{
+			string(candle[0].(string)),
+			fmt.Sprintf("%f", candle[1].(float64)),
+			fmt.Sprintf("%f", candle[2].(float64)),
+			fmt.Sprintf("%f", candle[3].(float64)),
+			fmt.Sprintf("%f", candle[4].(float64)),
+			fmt.Sprintf("%d", uint32(candle[5].(float64))),
+		})
+	}
 	var volumes []uint32 // Slice to store volumes
 	var volumeDatemap = map[uint32]string{}
 	for _, candle := range hist.Data.Candles {
@@ -93,8 +120,12 @@ func getHistory(instrument uint32) {
 			dates = append(dates, t.Format("2006-01-02"))
 		}
 	}
-	top10Volumes[instruments[instrument]] = volumes[:20]
-	top10VolumesDates[instruments[instrument]] = dates
+	top10Volumes[instruments[instrument][0]] = volumes[:20]
+	top40Volumes[instruments[instrument][0]] = volumes[:40]
+	top10VolumesDates[instruments[instrument][0]] = dates
+
+	CalculateAndStoreDMA(instrument, hist)
+	increasingThreeDays(instrument, hist)
 	// fmt.Println(volumes[:20])
 }
 
@@ -158,9 +189,74 @@ func getWeeklyHistory(instrument uint32) {
 		}
 	}
 	if increased {
-		incrementForLastThreeWeeks[instruments[instrument]] = "Yes"
+		incrementForLastThreeWeeks[instruments[instrument][0]] = "Yes"
 	} else {
-		incrementForLastThreeWeeks[instruments[instrument]] = "No"
+		incrementForLastThreeWeeks[instruments[instrument][0]] = "No"
+	}
+}
+
+func calculateDMA(instrument uint32, hist History, period int) float64 {
+	var closingPrices []float64
+	for _, candle := range hist.Data.Candles {
+		closingPrice := candle[4].(float64)
+		closingPrices = append(closingPrices, closingPrice)
+	}
+
+	if len(closingPrices) < period {
+		fmt.Printf("Insufficient data for %d-day DMA for instrument %s\n", period, instruments[instrument][0])
+		return 0.0 // Return an empty slice
+	}
+
+	var dma float64
+	// for i := period - 1; i < len(closingPrices); i++ {
+	// 	sum := 0.0
+	// 	for j := i - period + 1; j <= i; j++ {
+	// 		sum += closingPrices[j]
+	// 	}
+	// 	dma = append(dma, sum/float64(period))
+	// }
+	sum := 0.0
+	for i := len(closingPrices) - 1; i >= len(closingPrices)-period; i-- {
+		sum += closingPrices[i]
+		// dma = sum / float64(period)
+	}
+	dma = sum / float64(period)
+	// max two digits after point
+	dma = math.Round(dma*100) / 100
+	return dma
+}
+
+func CalculateAndStoreDMA(instrument uint32, hist History) {
+	dma50 := calculateDMA(instrument, hist, 50)
+	dma200 := calculateDMA(instrument, hist, 200)
+
+	dmaValues[instruments[instrument][0]+"_50DMA"] = dma50
+	dmaValues[instruments[instrument][0]+"_200DMA"] = dma200
+
+	if dma50 == 0 || dma200 == 0 {
+		return
+	}
+
+	lastPrice := hist.Data.Candles[len(hist.Data.Candles)-1][4].(float64)
+	lastVolume := hist.Data.Candles[len(hist.Data.Candles)-1][5].(float64)
+	isInTop40Volumes := false
+	isCurrentPricenear50DMA := lastPrice > dmaValues[instruments[instrument][0]+"_50DMA"]*0.96 && lastPrice < dmaValues[instruments[instrument][0]+"_50DMA"]*1.04
+	// isCurrentPricenear200DMA := lastPrice > dmaValues[instruments[instrument][0]+"_200DMA"]*0.97 && lastPrice < dmaValues[instruments[instrument][0]+"_200DMA"]*1.03
+	for _, vol := range top40Volumes[instruments[instrument][0]] {
+		if uint32(lastVolume) > vol {
+			isInTop40Volumes = true
+			break
+		}
+	}
+	if isInTop40Volumes && isCurrentPricenear50DMA {
+		// write to file 50DMA picks
+		f, err := os.OpenFile("50DMA.txt", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+		if err != nil {
+			panic(err)
+		}
+		defer f.Close()
+		s := fmt.Sprintf("%s,%f,%f,%f,%f\n", instruments[instrument][0], lastPrice, lastVolume, dmaValues[instruments[instrument][0]+"_50DMA"], dmaValues[instruments[instrument][0]+"_200DMA"])
+		f.WriteString(s)
 	}
 }
 
@@ -182,8 +278,8 @@ func increasingThreeDays(instrument uint32, hist History) {
 		}
 	}
 	if increased {
-		incrementForLastThreeDays[instruments[instrument]] = "Yes"
+		incrementForLastThreeDays[instruments[instrument][0]] = "Yes"
 	} else {
-		incrementForLastThreeDays[instruments[instrument]] = "No"
+		incrementForLastThreeDays[instruments[instrument][0]] = "No"
 	}
 }
